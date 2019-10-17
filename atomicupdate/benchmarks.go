@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -30,7 +28,7 @@ func benchMutexVsRWMutex2Writer10kSize() *chart.Chart {
 			points = append(points,
 				calculatePoint(
 					float64(writesPerSec),
-					prepareBench(&updatesBenchConfig{
+					prepareBench(updatesBenchConfig{
 						NumWriters:   2,
 						NumReaders:   numReaders,
 						ArraySize:    10_000,
@@ -42,7 +40,13 @@ func benchMutexVsRWMutex2Writer10kSize() *chart.Chart {
 		return
 	}
 
-	series := []ChartSeries{
+	return graphBenchmarks(
+		ChartConfig{
+			Title:     "Mutex vs RWMutex - 2 Writers, 10K Size",
+			XTitle:    "Writes/Sec",
+			YTitle:    "Reads/Sec",
+			ZeroBasis: true,
+		},
 		ChartSeries{
 			Name:   "Mutex-2",
 			Points: getPoints(NewMutexArray, 2),
@@ -67,26 +71,10 @@ func benchMutexVsRWMutex2Writer10kSize() *chart.Chart {
 			Name:   "RWMutex-6",
 			Points: getPoints(NewRWMutexArray, 6),
 		},
-	}
-
-	// note (bs): a lot of these interface boundaries are pretty rough; they need
-	// to be revisited. Also - I think the file names need to be locally bound in
-	// some sense. Perhaps I should just kinda cheat and use token munging.
-	// Alternatively, I could just stick with doing fanout-without-returning for
-	// the time being.
-	c := &charter{
-		config: normalizeChartConfig(&ChartConfig{
-			Title:  "Mutex vs RWMutex - 2 Writers, 10K Size",
-			XTitle: "Writes/Sec",
-			YTitle: "Reads/Sec",
-		}),
-		series: series,
-	}
-	return c.Get()
+	)
 }
 
 func benchMutexVsDeferMutex2Writer10kSize() *chart.Chart {
-
 	writeVals := []int{
 		100,
 		5_000,
@@ -101,7 +89,7 @@ func benchMutexVsDeferMutex2Writer10kSize() *chart.Chart {
 			points = append(points,
 				calculatePoint(
 					float64(writesPerSec),
-					prepareBench(&updatesBenchConfig{
+					prepareBench(updatesBenchConfig{
 						NumWriters:   2,
 						NumReaders:   2,
 						ArraySize:    10_000,
@@ -113,7 +101,13 @@ func benchMutexVsDeferMutex2Writer10kSize() *chart.Chart {
 		return
 	}
 
-	series := []ChartSeries{
+	return graphBenchmarks(
+		ChartConfig{
+			Title:     "Mutex vs Defer Mutex - 2 Writers, 10K Size",
+			XTitle:    "Writes/Sec",
+			YTitle:    "Reads/Sec",
+			ZeroBasis: true,
+		},
 		ChartSeries{
 			Name:   "Mutex-2",
 			Points: getPoints(NewMutexArray),
@@ -122,18 +116,7 @@ func benchMutexVsDeferMutex2Writer10kSize() *chart.Chart {
 			Name:   "DeferMutex-2",
 			Points: getPoints(NewDeferMutexArray),
 		},
-	}
-
-	c := &charter{
-		config: normalizeChartConfig(&ChartConfig{
-			Title:     "Mutex vs Defer Mutex - 2 Writers, 10K Size",
-			XTitle:    "Writes/Sec",
-			YTitle:    "Reads/Sec",
-			ZeroBasis: true,
-		}),
-		series: series,
-	}
-	return c.Get()
+	)
 }
 
 func benchMutexVsSemiAtomic2Writer10kSize() *chart.Chart {
@@ -158,7 +141,7 @@ func benchMutexVsSemiAtomic2Writer10kSize() *chart.Chart {
 			points = append(points,
 				calculatePoint(
 					float64(writesPerSec),
-					prepareBench(&updatesBenchConfig{
+					prepareBench(updatesBenchConfig{
 						NumWriters:   2,
 						NumReaders:   numReaders,
 						ArraySize:    10_000,
@@ -170,7 +153,13 @@ func benchMutexVsSemiAtomic2Writer10kSize() *chart.Chart {
 		return
 	}
 
-	series := []ChartSeries{
+	return graphBenchmarks(
+		ChartConfig{
+			Title:     "Mutex vs SemiAtomic - 2 Writers, 10K Size",
+			XTitle:    "Writes/Sec",
+			YTitle:    "Reads/Sec",
+			ZeroBasis: true,
+		},
 		ChartSeries{
 			Name:   "Mutex-2",
 			Points: getPoints(NewMutexArray, 2),
@@ -195,18 +184,7 @@ func benchMutexVsSemiAtomic2Writer10kSize() *chart.Chart {
 			Name:   "Atomic-6",
 			Points: getPoints(NewSemiAtomicArray, 6),
 		},
-	}
-
-	c := &charter{
-		config: normalizeChartConfig(&ChartConfig{
-			Title:     "Mutex vs SemiAtomic - 2 Writers, 10K Size",
-			XTitle:    "Writes/Sec",
-			YTitle:    "Reads/Sec",
-			ZeroBasis: true,
-		}),
-		series: series,
-	}
-	return c.Get()
+	)
 }
 
 func calculatePoint(x float64, bFn func(b *testing.B) float64) ChartPoint {
@@ -214,23 +192,10 @@ func calculatePoint(x float64, bFn func(b *testing.B) float64) ChartPoint {
 	res := testing.Benchmark(func(b *testing.B) {
 		y = bFn(b)
 	})
+	// adjusts the final rate so it's a per-second value
 	adjustment := float64(time.Second) / float64(res.T)
 	return ChartPoint{
-		X: approxFloat3(x * adjustment),
+		X: approxFloat3(x),
 		Y: approxFloat3(y * adjustment),
 	}
-}
-
-func approxFloat2(x float64) float64 {
-	if v, err := strconv.ParseFloat(fmt.Sprintf("%.2g", x), 64); err == nil {
-		return v
-	}
-	return x
-}
-
-func approxFloat3(x float64) float64 {
-	if v, err := strconv.ParseFloat(fmt.Sprintf("%.3g", x), 64); err == nil {
-		return v
-	}
-	return x
 }

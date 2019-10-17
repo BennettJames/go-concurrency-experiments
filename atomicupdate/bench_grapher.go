@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"math"
 
 	"github.com/wcharczuk/go-chart"
@@ -53,29 +51,12 @@ type (
 	}
 )
 
-func graphBenchmarks(cnf *ChartConfig, series ...ChartSeries) io.Reader {
+func graphBenchmarks(config ChartConfig, series ...ChartSeries) *chart.Chart {
 	c := &charter{
-		config: normalizeChartConfig(cnf),
+		config: config,
 		series: series,
 	}
-	buf := bytes.NewBuffer(nil)
-	c.Get().Render(chart.PNG, buf)
-	return buf
-}
-
-func normalizeChartConfig(config *ChartConfig) ChartConfig {
-	if config == nil {
-		config = &ChartConfig{}
-	}
-
-	return ChartConfig{
-		// no defaults for titles; if they are unspecified just elide the value
-		Title:  config.Title,
-		XTitle: config.XTitle,
-		YTitle: config.YTitle,
-
-		ZeroBasis: config.ZeroBasis,
-	}
+	return c.Get()
 }
 
 type charter struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,13 +11,26 @@ import (
 )
 
 func main() {
+	// Basic operation:
+	//
+	// This entry point will execute benchmarks, gather data, and output graphs
+	// based on the results. Rather than perform benchmarks through the go tool's
+	// testing facility, this invokes testing.Benchmark directly as to control and
+	// analyze execution.
+	//
+	// Set's of data are prepared, normalized, labelled, then fed into the
+	// go-chart library. This is used to generate simple line graphs of the data,
+	// which is then output to the img/ directory.
+	//
+	// The control for what to graph and bench is not particularly elegant - just
+	// comment/uncomment values in the "graphs" array.
 
 	if err := os.MkdirAll(filepath.Join(".", "img"), 0777); err != nil {
 		log.Fatal(err)
 	}
 
 	graphs := []*chart.Chart{
-		// benchMutexVsRWMutex2Writer10kSize(),
+		benchMutexVsRWMutex2Writer10kSize(),
 		// benchMutexVsDeferMutex2Writer10kSize(),
 		// benchMutexVsSemiAtomic2Writer10kSize(),
 	}
@@ -35,42 +47,4 @@ func main() {
 		}
 		g.Render(chart.PNG, f)
 	}
-
-	os.Exit(0)
-
-	f, copyErr := os.Create("output.png")
-	if copyErr != nil {
-		log.Fatal(copyErr)
-	}
-
-	r := graphBenchmarks(&ChartConfig{
-		Title:  "It's a Title",
-		XTitle: "The X Axis",
-		YTitle: "The Y Axis",
-	},
-		ChartSeries{
-			Name: "Sample #1",
-			Points: []ChartPoint{
-				ChartPoint{X: 1, Y: 7},
-				ChartPoint{X: 2, Y: 4},
-				ChartPoint{X: 3, Y: 3},
-				ChartPoint{X: 4, Y: 2},
-				ChartPoint{X: 7, Y: 2},
-			},
-		},
-		ChartSeries{
-			Name: "Sample #2",
-			Points: []ChartPoint{
-				ChartPoint{X: 1, Y: 1},
-				ChartPoint{X: 2, Y: 2},
-				ChartPoint{X: 3, Y: 3},
-				ChartPoint{X: 4, Y: 4},
-				ChartPoint{X: 7, Y: 7},
-			},
-		},
-	)
-	if _, copyErr := io.Copy(f, r); copyErr != nil {
-		log.Fatal(copyErr)
-	}
-
 }
