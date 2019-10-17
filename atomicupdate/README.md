@@ -4,10 +4,11 @@
 I was curious about the performance of some different ways of serializing
 reads/writes on a Go data structure. What follows is a description of some
 different ways to do this; and is followed by some benchmarking under different
-usage scenarios.
+usage scenarios. Particularly, it highlights a hybrid atomic/lock structure that
+can work well in situations with cheap reads and expensive writes.
 
 
-## Introduction
+## Background & Setup
 
 (todo [bs]: Let's add one-or-two sentences here about the need for
 synchronization; just that the CPU needs some special guidelines when data is
@@ -67,23 +68,22 @@ type MutexArray struct {
 }
 
 func (ma *MutexArray) Get() []int {
-	ma.l.Lock()
-	defer ma.l.Unlock()
-	return ma.a
+  ma.l.Lock()
+  v := ma.a
+	ma.l.Unlock()
+	return v
 }
 
 func (ma *MutexArray) Add(amt int) {
 	ma.l.Lock()
-	defer ma.l.Unlock()
 	newA := make([]int, len(ma.a))
 	for i, v := range ma.a {
 		newA[i] = v + amt
 	}
-	ma.a = newA
+  ma.a = newA
+  ma.l.Unlock()
 }
 ```
-
-(todo [bs]: let's try the benchmarks without defer as well; that seems fair.)
 
 This is as simple as it gets. If the data needs to be read or written, a lock is
 first required. Anyone else who needs to act on the data will try to acquire the
@@ -145,22 +145,28 @@ func (ma *SemiAtomicArray) Get() []int {
 
 func (ma *SemiAtomicArray) Add(amt int) {
 	ma.updateL.Lock()
-	defer ma.updateL.Unlock()
 	oldA := ma.v.Load().([]int)
 	newA := make([]int, len(oldA))
 	for i, v := range oldA {
 		newA[i] = v + amt
 	}
-	ma.v.Store(newA)
+  ma.v.Store(newA)
+  ma.updateL.Unlock()
 }
 ```
-
 
 (aside [bs]: consider trying to extract and understand the details of
 AtomicValue. Particularly, it has some eccentricities when initializing type
 that are a little odd and aren't really necessary here. Also; I wouldn't mind
 trying a fully lockless implementation as well via unsafe.Pointer. After reading
 the code I suspect that'd be doable without a ton of effort).
+
+### Channels?
+
+Go's trademark way of data sharing is message passing via channels. They're fine
+in some situations, but they have a fundamentally more complicated runtime with
+a high overhead. These benchmarks are focused on simpler, passive data that
+needs to be shared; channels are not considered.
 
 
 ## Benchmarking the Implementations
@@ -176,30 +182,59 @@ perform under different conditions. We'll consider four main variables:
 - The number of reader and writer goroutines. Each goroutine will occasionally
   preempt itself by taking nanosecond sleeps at occasional intervals.
 
-In addition to the mutex, rwmutex, and semi-atomic implementations, a "no-op"
-implementation is included as a baseline. It does nothing - it returns a nil
-slice and performs no updates.
-
-This is solely being tested on my old mac mini, with a 2012 i7. The total number
-of active goroutines is generally limited to 8, as that is the number of
-threads.
+This is being tested on my 2012 mac mini, with a i7-3615QM processor. The
+total number of active goroutines is generally limited to 8, as that is the
+number of threads.
 
 Without further adieu - let's dive into some benchmarks.
 
 
 ### Plain vs RW Mutex
 
+Let's take a a look at a plain mutex vs a rw mutex. In all tests, there are a
+fixed number of two writing goroutines. The number of readers varies from 2-6.
+The experiment is conducted with a number of writes per second varying from
+100-35,000, and a fixed array size of 10,000.
+
+Note that the write rate goes "backwards" at one point. That means the program
+is no longer able to effectively keep up with the specified number of writes
+given the overall load.
+
+![mutex vs rwmutex](img/mutex-vs-rwmutex-2-writers-10k-size.png)
+
+Overall, as the number of readers increases performance drops. RWMutex can
+better weather the increase, but performs worse even at very low write numbers.
+
+As write frequency increases, the read-write advantage will eventually disappear
+and reverse. This is likely due to the mechanics of Go's RWMutex. Go treat's
+write locks as having a higher priority than a read lock. I'd wager that as
+goroutines spend more and more time inside of or waiting on the lock mutex, very
+few parallel read locks can be acquired. That ruins the advantage of the read
+lock, and starts doing worse on account of the more complicated mechanics.
+
+Note that these results are specific to having cheap reads and expensive writes.
+RWMutex would perhaps fare better if the situation were reversed.
+
+(todo [bs]: I'm tempted to run the same experiment here, but with 1k instead of
+10k array size. I'd guess that RW would have a larger example in that. Let's at
+least get the graph, but I wouldn't necessarily include it - at a certain point,
+have to distill "key insights" rather than talk in circles)
+
+
+### Defer vs Manual Unlock
+
+(todo [bs]: the performance here was much better after taking out defer. Let's
+at least mention that; and consider showing a short benchmark to that effect.
+Doesn't have to be anything fancy; just a few values in a series would be fine)
 
 
 
 
 
+### Mutex vs Hybrid Atomic
 
-(aside [bs]: the rwmutex performs badly here in large part because no real work
-is done on the lock. It'd be worth clarifying that this situation isn't
-necessarily typical; and in cases where you just need to derive some data it may
-be better to use hidden, mutable data and more complicated processing methods
-that hold the read lock)
+
+
 
 
 ## Conclusions

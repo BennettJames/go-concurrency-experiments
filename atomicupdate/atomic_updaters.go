@@ -52,18 +52,19 @@ func NewMutexArray(len int) ThreadsafeArray {
 
 func (ma *MutexArray) Get() []int {
 	ma.l.Lock()
-	defer ma.l.Unlock()
-	return ma.a
+	v := ma.a
+	ma.l.Unlock()
+	return v
 }
 
 func (ma *MutexArray) Add(amt int) {
 	ma.l.Lock()
-	defer ma.l.Unlock()
 	newA := make([]int, len(ma.a))
 	for i, v := range ma.a {
 		newA[i] = v + amt
 	}
 	ma.a = newA
+	ma.l.Unlock()
 }
 
 func NewRWMutexArray(len int) ThreadsafeArray {
@@ -74,18 +75,19 @@ func NewRWMutexArray(len int) ThreadsafeArray {
 
 func (ma *RWMutexArray) Get() []int {
 	ma.l.RLock()
-	defer ma.l.RUnlock()
-	return ma.a
+	v := ma.a
+	ma.l.RUnlock()
+	return v
 }
 
 func (ma *RWMutexArray) Add(amt int) {
 	ma.l.Lock()
-	defer ma.l.Unlock()
 	newA := make([]int, len(ma.a))
 	for i, v := range ma.a {
 		newA[i] = v + amt
 	}
 	ma.a = newA
+	ma.l.Unlock()
 }
 
 func NewSemiAtomicArray(len int) ThreadsafeArray {
@@ -100,13 +102,13 @@ func (ma *SemiAtomicArray) Get() []int {
 
 func (ma *SemiAtomicArray) Add(amt int) {
 	ma.updateL.Lock()
-	defer ma.updateL.Unlock()
 	oldA := ma.v.Load().([]int)
 	newA := make([]int, len(oldA))
 	for i, v := range oldA {
 		newA[i] = v + amt
 	}
 	ma.v.Store(newA)
+	ma.updateL.Unlock()
 }
 
 func NewNoOpArray(len int) ThreadsafeArray {

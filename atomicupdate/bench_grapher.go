@@ -85,29 +85,38 @@ type charter struct {
 
 func (c *charter) Get() *chart.Chart {
 
-	// todo (bs): look into approximating the axis to two significant digits
+	yRange := c.yRange()
 
-	// var xFormatter chart.ValueFormatter = func(v interface{}) string {
-	// 	return fmt.Sprintf("%v", v)
-	// }
-	// var yFormatter chart.ValueFormatter = func(v interface{}) string {
-	// 	return fmt.Sprintf("%v", v)
-	// }
+	// todo (bs): see if the density of the axis can be scaled down to deal with
+
+	var xFormatter chart.ValueFormatter = func(v interface{}) string {
+		// fixme (bs): this is overly-clumsy. The formatting here should be
+		// sensitive to smaller x values than this.
+		return fmt.Sprintf("%.0f", approxFloat2(v.(float64)))
+	}
+	var yFormatter chart.ValueFormatter = func(v interface{}) string {
+		if yRange.GetDelta() >= 100_000 {
+			return fmt.Sprintf("%.1e", v)
+		}
+		return fmt.Sprintf("%v", v)
+	}
 
 	graph := &chart.Chart{
 		Title:      c.config.Title,
 		Background: c.bgStyle(),
 		XAxis: chart.XAxis{
-			Name: c.config.XTitle,
+			Name:           c.config.XTitle,
+			ValueFormatter: xFormatter,
 		},
 		YAxis: chart.YAxis{
-			Name:  c.config.YTitle,
-			Range: c.yRange(),
+			Name:           c.config.YTitle,
+			ValueFormatter: yFormatter,
+			Range:          yRange,
 		},
 		Series: c.chartSeries(),
 	}
 	graph.Elements = []chart.Renderable{
-		chart.Legend(graph),
+		chart.LegendLeft(graph),
 	}
 	return graph
 }
@@ -116,7 +125,7 @@ func (c *charter) bgStyle() chart.Style {
 	return chart.Style{
 		Padding: chart.Box{
 			Top:    20,
-			Left:   20,
+			Left:   110,
 			Right:  20,
 			Bottom: 20,
 		},
