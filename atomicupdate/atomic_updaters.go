@@ -24,6 +24,13 @@ type (
 		a []int
 	}
 
+	// DeferMutexArray implements ThreadsafeArray with a single mutex, and uses
+	// defer unlock.
+	DeferMutexArray struct {
+		l sync.Mutex
+		a []int
+	}
+
 	// RWMutexArray implements ThreadsafeArray with a RWMutex.
 	RWMutexArray struct {
 		l sync.RWMutex
@@ -65,6 +72,28 @@ func (ma *MutexArray) Add(amt int) {
 	}
 	ma.a = newA
 	ma.l.Unlock()
+}
+
+func NewDeferMutexArray(len int) ThreadsafeArray {
+	return &DeferMutexArray{
+		a: make([]int, len),
+	}
+}
+
+func (ma *DeferMutexArray) Get() []int {
+	ma.l.Lock()
+	defer ma.l.Unlock()
+	return ma.a
+}
+
+func (ma *DeferMutexArray) Add(amt int) {
+	ma.l.Lock()
+	defer ma.l.Unlock()
+	newA := make([]int, len(ma.a))
+	for i, v := range ma.a {
+		newA[i] = v + amt
+	}
+	ma.a = newA
 }
 
 func NewRWMutexArray(len int) ThreadsafeArray {

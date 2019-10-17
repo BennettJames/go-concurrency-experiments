@@ -1,29 +1,28 @@
 
 # Benchmarking Some Serialized Data Patterns
 
-I was curious about the performance of some different ways of serializing
-reads/writes on a Go data structure. What follows is a description of some
-different ways to do this; and is followed by some benchmarking under different
-usage scenarios. Particularly, it highlights a hybrid atomic/lock structure that
-can work well in situations with cheap reads and expensive writes.
+I was curious about the performance of some serialization techniques
+reads/writes on a Go data structure. What follows is an overview of some
+different ways to do this along with some benchmark. Particularly, it highlights
+a hybrid atomic/lock structure that can work well in situations with cheap reads
+and expensive writes.
+
+A note on the article - this was written in hopes of being understandable to
+those with only passing familiarity with multithreading. For those with more
+experience, the section on atomics and benchmarking may still prove interesting.
 
 
-## Background & Setup
-
-(todo [bs]: Let's add one-or-two sentences here about the need for
-synchronization; just that the CPU needs some special guidelines when data is
-accessed between threads. Goal isn't to create a treatise on the fundamentals of
-concurrency; but should at least introduce th e need for this in broad strokes.
-Also may wish to tweak the existing intro paragraph as part of this)
+# Background & Setup
 
 A common multi-threading problem: there is some data in your application.
 Readers and writers will need to access and modify the data from multiple
-threads. How is this access made to be safe?
+threads. If multiple threads just start reading and writing without any care, a
+whole host of problems arise. How is this access made to be safe?
 
-I often find myself following this basic pattern to guarantee thread safety:
+I often follow this pattern to guarantee thread safety:
 
-- Treat the data itself as immutable. It can be fetched and set, but all
-  subfields and data structures can never be modified.
+- Treat the data itself as immutable. It can be fetched and updated, but all
+  subfields and data structures are never directly.
 
 - Whenever any part of the data needs to be updated, create a complete copy of
   the original with whatever updated values are needed.
@@ -34,7 +33,7 @@ I often find myself following this basic pattern to guarantee thread safety:
 
 Of course, there are plenty of situational alterations to this pattern; but it's
 a good starting point when dealing with sharing data between threads. For the
-sake of this experiment, we'll be using the following toy interface:
+sake of this experiment, I'll be using the following toy interface:
 
 ```go
 // ThreadsafeArray is an interface that represents an integer array of fixed
@@ -51,11 +50,11 @@ type ThreadsafeArray interface {
 
 This is a comically underpowered interface without real world value. It is
 acting as a stand-in for the basic type of concurrency under test here:
-immutable data, cheap reads, and expensive writes. The expense can
-be dynamically varied by changing the size of the array.
+immutable shared data, cheap reads, and expensive writes. Expense can be altered
+by changing the size of the array.
 
 
-### Locks
+## Locks
 
 The most common way to deal with this is with a lock (or "mutex"). Here's an
 implementation using a plain go mutex:
@@ -94,7 +93,7 @@ lock. A read-write lock let's multiple readers access the data at the same time,
 but ensures if anyone is writing to the data everyone else has to wait.
 
 
-### Atomics
+## Atomics
 
 Atomics can be used as an alternative to locks. They use special CPU
 instructions for writing/reading to avoid the need for a lock. This can avoid
@@ -155,21 +154,16 @@ func (ma *SemiAtomicArray) Add(amt int) {
 }
 ```
 
-(aside [bs]: consider trying to extract and understand the details of
-AtomicValue. Particularly, it has some eccentricities when initializing type
-that are a little odd and aren't really necessary here. Also; I wouldn't mind
-trying a fully lockless implementation as well via unsafe.Pointer. After reading
-the code I suspect that'd be doable without a ton of effort).
 
-### Channels?
+## Channels?
 
-Go's trademark way of data sharing is message passing via channels. They're fine
-in some situations, but they have a fundamentally more complicated runtime with
-a high overhead. These benchmarks are focused on simpler, passive data that
+Go's trademark means of data sharing is passing messages via channels. They're
+fine in some situations, but they have a fundamentally more complicated runtime
+with a high overhead. These benchmarks are focused on simpler, passive data that
 needs to be shared; channels are not considered.
 
 
-## Benchmarking the Implementations
+# Benchmarking the Implementations
 
 So, with all that introducing out of the way, let's take a look at how these
 perform under different conditions. We'll consider four main variables:
@@ -189,63 +183,94 @@ number of threads.
 Without further adieu - let's dive into some benchmarks.
 
 
-### Plain vs RW Mutex
+## Plain vs RW Mutex
 
 Let's take a a look at a plain mutex vs a rw mutex. In all tests, there are a
 fixed number of two writing goroutines. The number of readers varies from 2-6.
 The experiment is conducted with a number of writes per second varying from
 100-35,000, and a fixed array size of 10,000.
 
-Note that the write rate goes "backwards" at one point. That means the program
-is no longer able to effectively keep up with the specified number of writes
-given the overall load.
-
 ![mutex vs rwmutex](img/mutex-vs-rwmutex-2-writers-10k-size.png)
 
-Overall, as the number of readers increases performance drops. RWMutex can
-better weather the increase, but performs worse even at very low write numbers.
+Overall, as the number of readers increases performance drops. RWMutex better
+weathers additional readers, but not very well.
 
 As write frequency increases, the read-write advantage will eventually disappear
-and reverse. This is likely due to the mechanics of Go's RWMutex. Go treat's
-write locks as having a higher priority than a read lock. I'd wager that as
-goroutines spend more and more time inside of or waiting on the lock mutex, very
-few parallel read locks can be acquired. That ruins the advantage of the read
-lock, and starts doing worse on account of the more complicated mechanics.
+and reverse. This is likely due to the mechanics of Go's RWMutex. A write lock
+has higher priority than a read lock; it's guaranteed to be serviced before any
+read lock. I'd wager that as goroutines spend more and more time inside of or
+waiting on the lock mutex, very few parallel read locks can be acquired. That
+ruins the advantage of the read lock, and throughput drops on account of the
+more complicated mechanics.
 
 Note that these results are specific to having cheap reads and expensive writes.
 RWMutex would perhaps fare better if the situation were reversed.
 
-(todo [bs]: I'm tempted to run the same experiment here, but with 1k instead of
-10k array size. I'd guess that RW would have a larger example in that. Let's at
-least get the graph, but I wouldn't necessarily include it - at a certain point,
-have to distill "key insights" rather than talk in circles)
+
+## Defer vs Manual Unlock
+
+Astute Go programmers may have noticed the lack of `defer` in the sample code so
+far. Idiomatic Go commonly uses `defer` to handle resource cleanup, which can be
+used to guarantee an action is taken before exiting a function.
+
+This was just to squeeze out a little more performance - `defer` can add
+noticeable overhead to simple cases. Here's a contrast between a manual unlock
+and a defer unlock:
+
+![mutex vs defer mutex](img/mutex-vs-defer-mutex-2-writers-10k-size.png)
+
+Not too much to see here - defer adds considerable overhead in cases where the
+guarded action is so cheap. Still, I'd tend to use it just because it's the most
+obviously correct way to guard actions, and makes code more robust to future
+changes.
+
+For example, let's say we extend the mutex array to early exit if there's no
+work to do:
+
+```go
+// fine - the defer is still triggered with the early exit
+func (ma *MutexArray) Add(amt int) {
+  ma.l.Lock()
+  defer ma.l.Unlock()
+  if len(ma.a) == 0 || amt == 0 {
+    return
+  }
+  // performs work
+}
+
+// deadlock - the early exit makes the array unusable, and brings down the program
+func (ma *MutexArray) Add(amt int) {
+  ma.l.Lock()
+  if len(ma.a) == 0 || amt == 0{
+    return
+  }
+  // performs work
+  ma.l.Unlock()
+}
+```
 
 
-### Defer vs Manual Unlock
+## Mutex vs Hybrid Atomic
 
-(todo [bs]: the performance here was much better after taking out defer. Let's
-at least mention that; and consider showing a short benchmark to that effect.
-Doesn't have to be anything fancy; just a few values in a series would be fine)
+Let's take a look at the partially atomic implementation -
 
+![mutex vs semi atomic](img/mutex-vs-semiatomic-2-writers-10k-size.png)
 
+That's a pretty big jump in read performance! Removing the lock drastically
+reduces the cost of a read across many load profiles.
 
+This is less obvious from the graph, but write performance is also somewhat
+helped, as there's less contention for the lock.
 
+Interestingly, read performance still drops some when the total number of
+goroutines goes beyond 4. I'd speculate is that's because the processor is a
+quad core; even though there are 8 threads that just doesn't help much when
+doing direct, low-I/O computations.
 
-### Mutex vs Hybrid Atomic
-
-
-
-
-
-## Conclusions
-
-(todo [bs]: this was written off of some preliminary results; should definitely
-revisit it later)
+# Conclusions
 
 In sum: in basic cases that don't involve huge amounts of contention, a basic
 lock will do fine. Correctness is always a more pressing concern than
 performance, and the average app doesn't need to worry about this. When there is
-the need for a high amount of quick reads and expensive updates, it might be
-worth doing the split atomic/lock technique.
-
-
+the need for a high amount of quick reads and expensive updates, it's worth
+considering the split atomic/lock technique.

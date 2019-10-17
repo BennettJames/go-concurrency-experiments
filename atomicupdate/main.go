@@ -6,9 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
-	"testing"
-	"time"
 
 	"github.com/gosimple/slug"
 	"github.com/wcharczuk/go-chart"
@@ -22,6 +19,8 @@ func main() {
 
 	graphs := []*chart.Chart{
 		// benchMutexVsRWMutex2Writer10kSize(),
+		// benchMutexVsDeferMutex2Writer10kSize(),
+		// benchMutexVsSemiAtomic2Writer10kSize(),
 	}
 
 	for i, g := range graphs {
@@ -74,33 +73,4 @@ func main() {
 		log.Fatal(copyErr)
 	}
 
-}
-
-func calculatePoint(x float64, bFn func(b *testing.B) float64) ChartPoint {
-	var y float64
-	res := testing.Benchmark(func(b *testing.B) {
-		y = bFn(b)
-	})
-	adjustment := float64(time.Second) / float64(res.T)
-
-	// note (bs): I'm kind of cheating by flooring here. What I really want is to
-	// round significant digits.
-	return ChartPoint{
-		X: approxFloat3(x * adjustment),
-		Y: approxFloat3(y * adjustment),
-	}
-}
-
-func approxFloat2(x float64) float64 {
-	if v, err := strconv.ParseFloat(fmt.Sprintf("%.2g", x), 64); err == nil {
-		return v
-	}
-	return x
-}
-
-func approxFloat3(x float64) float64 {
-	if v, err := strconv.ParseFloat(fmt.Sprintf("%.3g", x), 64); err == nil {
-		return v
-	}
-	return x
 }
