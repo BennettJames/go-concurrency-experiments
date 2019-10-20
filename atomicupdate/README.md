@@ -263,9 +263,10 @@ This is less obvious from the graph, but write performance is also somewhat
 helped, as there's less contention for the lock.
 
 Interestingly, read performance still drops some when the total number of
-goroutines goes beyond 4. I'd speculate is that's because the processor is a
-quad core; even though there are 8 threads that just doesn't help much when
-doing direct, low-I/O computations.
+goroutines goes beyond 4. That would deserve some more investigation - it might
+just be a limit of atomic instructions on the processor, or perhaps the
+underlying 4 cores of the processor aren't able to squeeze out any more
+performance even with eight threads.
 
 # Conclusions
 

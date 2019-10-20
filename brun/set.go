@@ -58,8 +58,8 @@ type fnStack struct {
 	notify chan (struct{})
 }
 
-// initializes a new fnStack. This must be called to safely initialize the
-// stack.
+// newFnStack initializes a new fnStack. This must be called to safely
+// initialize the stack.
 func newFnStack() *fnStack {
 	return &fnStack{
 		notify: make(chan struct{}, 1),
