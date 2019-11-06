@@ -1,0 +1,16 @@
+name: Experiments Tester
+
+on:
+  push:
+    branches:
+      - master
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - uses: actions/setup-go@v1
+      with:
+        go-version: '1.13.4'
+    - run: cd brun && go test
