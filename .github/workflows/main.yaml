@@ -1,0 +1,12 @@
+name: Experiments Tester
+
+on: [push]
+
+jobs:
+  test-all:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - test brun
+      run: |
+        cd brun && go test
